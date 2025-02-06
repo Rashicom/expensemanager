@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "expencemanager"
+version = "0.1.0"
+description = ""
+authors = ["Rashicom <rashid.kp484@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = {extras = ["standard"], version = "^0.115.8"}
+sqlalchemy = "^2.0.37"
+asyncpg = "^0.30.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
