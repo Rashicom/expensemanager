@@ -1,10 +1,11 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, Query, HTTPException, status
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from typing import List
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, select
+from sqlalchemy import Column, Integer, String, select, DateTime, func
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from sqlalchemy.orm import selectinload
 
@@ -28,6 +29,7 @@ class Expenses(Base):
     name = Column(String, nullable=False)
     amount = Column(Integer)
     catagory = Column(String)
+    created_at = Column(DateTime, server_default=func.now())
 
 class Salary(Base):
     __tablename__ = "salary"
@@ -42,6 +44,7 @@ class CreateExpenseSchema(BaseModel):
 
 class ExpenseSchema(CreateExpenseSchema):
     id:int
+    created_at:datetime
 
 class CreateSalarySchema(BaseModel):
     amount:int
@@ -74,11 +77,56 @@ async def create_expense(expense:CreateExpenseSchema, db:AsyncSession=Depends(ge
     return expense_obj
 
 
-@app.get("/list-expense", response_model=List[ExpenseSchema])
+@app.get("/list-all-expense", response_model=List[ExpenseSchema])
 async def list_expense(db:AsyncSession=Depends(get_db)):
     result = await db.execute(select(Expenses))
     return result.scalars().all()
 
+
+@app.get("/list-expense", response_model=List[ExpenseSchema])
+async def list_expense(
+    db: AsyncSession = Depends(get_db),
+    start_date: datetime = Query(None, description="Start date for filtering"),
+    end_date: datetime = Query(None, description="End date for filtering")
+):
+    query = select(Expenses)
+
+    # Apply date filtering if parameters are provided
+    if start_date and end_date:
+        query = query.where(Expenses.created_at.between(start_date, end_date))
+    elif start_date:
+        query = query.where(Expenses.created_at >= start_date)
+    elif end_date:
+        query = query.where(Expenses.created_at <= end_date)
+
+    result = await db.execute(query)
+    return result.scalars().all()
+
+@app.get("/expense/{expense_id}", response_model=ExpenseSchema)
+async def get_expense(expense_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Expenses).where(Expenses.id == expense_id))
+    expense = result.scalar_one_or_none()
+
+    if not expense:
+        raise HTTPException(status_code=404, detail="Expense not found")
+
+    return expense
+
+@app.get("/list-salary", response_model=List[SalarySchema])
+async def list_salary(db:AsyncSession=Depends(get_db)):
+    result = await db.execute(select(Salary))
+    return result.scalars().all()
+
+
+@app.get("/salary/{id}", response_model=SalarySchema)
+async def get_salary(id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Salary).where(Salary.id == id))
+    expense = result.scalar_one_or_none()
+
+    if not expense:
+        raise HTTPException(status_code=404, detail="Salary not found")
+
+    return expense
 
 @app.post("/create-slary", response_model=SalarySchema)
 async def create_salary(salart:CreateSalarySchema, db:AsyncSession=Depends(get_db)):
@@ -87,6 +135,7 @@ async def create_salary(salart:CreateSalarySchema, db:AsyncSession=Depends(get_d
     await db.commit()
     await db.refresh(salart_obj)                                                                                                           
     return salart_obj
+
 
 
 @app.get("/overview")
